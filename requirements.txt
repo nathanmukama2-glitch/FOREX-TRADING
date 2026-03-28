@@ -2,3 +2,4 @@ yfinance
 pandas_ta
 tensorflow 
 plotly
+streamlit
