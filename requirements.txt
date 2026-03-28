@@ -4,5 +4,3 @@ numpy
 pandas_ta
 yfinance
 plotly
-tensorflow
-scikit-learn
