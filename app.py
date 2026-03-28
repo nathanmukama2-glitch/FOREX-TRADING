@@ -34,33 +34,26 @@ if not data.empty and len(data) > 30:
     
     # --- 4. STRENGTH SCORING LOGIC ---
     score = 5 
-    last_close = data['Close'].iloc[-1]
-    
     if 'RSI' in data.columns and pd.notna(data['RSI'].iloc[-1]):
         rsi_val = data['RSI'].iloc[-1]
         if rsi_val < 35: score += 2 
-        if rsi_val > 65: score -= 2 
+        elif rsi_val > 65: score -= 2 
 
     # --- 5. DASHBOARD LAYOUT ---
     col1, col2 = st.columns([1, 1])
     
     with col1:
-        st.subheader("🔥 Entry Strength Heatmap")
-        # Fixed Heatmap logic
-        bg_color = "#2ecc71" if score >= 7 else "#e74c3c" if score <= 3 else "#95a5a6"
+        st.subheader("🔥 Entry Strength Score")
         
-        heatmap_html = f"""
-            <div style="background-color:{bg_color}; padding:30px; border-radius:15px; text-align:center; border: 2px solid white;">
-                <h1 style="color:white; font-size:50px; margin:0;">{score} / 10</h1>
-                <p style="color:white; font-size:20px; font-weight:bold; margin:0;">Entry Strength</p>
-            </div>
-        """
-        st.markdown(heatmap_html, unsafe_allow_with_html=True)
-        
+        # Using a standard metric with a colored border for stability
         if score >= 7:
-            st.success("🚨 ALERT: STRONG BUY SIGNAL")
+            st.success(f"### SCORE: {score} / 10 - STRONG BUY")
         elif score <= 3:
-            st.error("🚨 ALERT: STRONG SELL SIGNAL")
+            st.error(f"### SCORE: {score} / 10 - STRONG SELL")
+        else:
+            st.warning(f"### SCORE: {score} / 10 - NEUTRAL")
+            
+        st.progress(score / 10) # Visual bar showing the 0-10 strength
 
     with col2:
         st.subheader("📰 Macro News")
@@ -77,7 +70,7 @@ if not data.empty and len(data) > 30:
     # --- 6. HISTORY ---
     st.divider()
     st.subheader("📝 Market History Log")
-    st.dataframe(data[['Close', 'Open', 'High', 'Low']].tail(5))
+    st.dataframe(data[['Open', 'High', 'Low', 'Close']].tail(5))
 
 else:
     st.info("🔄 Connecting to live exchange rates... please wait.")
