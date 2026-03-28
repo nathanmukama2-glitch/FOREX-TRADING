@@ -22,7 +22,6 @@ with st.sidebar:
     if stop_loss_pips > 0:
         lot_size = risk_amount / (stop_loss_pips * 10)
         st.success(f"Recommended Lot: {lot_size:.2f}")
-        st.caption(f"Risking: ${risk_amount:.2f}")
 
 # --- 2. DATA FETCHING ---
 ticker = yf.Ticker(symbol)
@@ -31,46 +30,54 @@ data = ticker.history(period="1mo", interval=timeframe)
 if not data.empty and len(data) > 30:
     # --- 3. INDICATORS ENGINE ---
     data['RSI'] = ta.rsi(data['Close'], length=14)
+    adx = ta.adx(data['High'], data['Low'], data['Close'], length=14)
+    data = pd.concat([data, adx], axis=1)
     
     # --- 4. STRENGTH SCORING LOGIC ---
     score = 5 
-    if 'RSI' in data.columns and pd.notna(data['RSI'].iloc[-1]):
+    
+    # RSI Scoring
+    if pd.notna(data['RSI'].iloc[-1]):
         rsi_val = data['RSI'].iloc[-1]
-        if rsi_val < 35: score += 2 
-        elif rsi_val > 65: score -= 2 
+        if rsi_val < 30: score += 2 
+        elif rsi_val > 70: score -= 2 
 
-    # --- 5. DASHBOARD LAYOUT ---
+    # Trend Strength (ADX) - Don't trade if ADX < 20 (Weak Trend)
+    last_adx = data['ADX_14'].iloc[-1]
+    if last_adx < 20:
+        score = 5 # Force neutral if there is no trend
+    
+    # --- 5. DASHBOARD & ALERTS ---
     col1, col2 = st.columns([1, 1])
     
     with col1:
         st.subheader("🔥 Entry Strength Score")
         
-        # Using a standard metric with a colored border for stability
-        if score >= 7:
-            st.success(f"### SCORE: {score} / 10 - STRONG BUY")
-        elif score <= 3:
-            st.error(f"### SCORE: {score} / 10 - STRONG SELL")
+        if score >= 8:
+            st.success(f"### SCORE: {score} / 10")
+            st.balloons() # Visual celebration for high strength
+            st.warning("🚨 ALERT: HIGH PROBABILITY BUY SIGNAL DETECTED")
+        elif score <= 2:
+            st.error(f"### SCORE: {score} / 10")
+            st.warning("🚨 ALERT: HIGH PROBABILITY SELL SIGNAL DETECTED")
         else:
-            st.warning(f"### SCORE: {score} / 10 - NEUTRAL")
+            st.info(f"### SCORE: {score} / 10")
             
-        st.progress(score / 10) # Visual bar showing the 0-10 strength
+        st.progress(score / 10)
+        st.write(f"**Trend Strength (ADX):** {last_adx:.2f} ({'Strong' if last_adx > 25 else 'Weak'})")
 
     with col2:
         st.subheader("📰 Macro News")
         news = ticker.news
         if news:
             for item in news[:3]:
-                title = item.get('title')
-                link = item.get('link')
-                if title and link:
-                    st.write(f"• **{title}** [Read]({link})")
-        else:
-            st.write("No fundamentals found at this moment.")
+                st.write(f"• **{item.get('title')}** [Read]({item.get('link')})")
 
-    # --- 6. HISTORY ---
+    # --- 6. ADVANCED HISTORY ---
     st.divider()
-    st.subheader("📝 Market History Log")
-    st.dataframe(data[['Open', 'High', 'Low', 'Close']].tail(5))
+    st.subheader("📝 Live Foreteller Log")
+    # Show last 5 periods with indicators
+    st.dataframe(data[['Close', 'RSI', 'ADX_14']].tail(5))
 
 else:
-    st.info("🔄 Connecting to live exchange rates... please wait.")
+    st.info("🔄 Connecting to live exchange rates...")
