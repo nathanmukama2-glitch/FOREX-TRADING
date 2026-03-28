@@ -2,12 +2,13 @@ import streamlit as st
 import yfinance as yf
 import pandas_ta as ta
 import pandas as pd
-import numpy as np
+import requests
+from bs4 import BeautifulSoup
 
 st.set_page_config(page_title="Forex Foreteller Pro", layout="wide")
 st.title("🦅 Forex Trading Foreteller Pro")
 
-# --- 1. SIDEBAR: SETTINGS ---
+# --- 1. SIDEBAR: RISK MGMT ---
 with st.sidebar:
     st.header("⚙️ Trading Settings")
     symbol = st.text_input("Pair (e.g., EURUSD=X)", "EURUSD=X")
@@ -29,58 +30,57 @@ ticker = yf.Ticker(symbol)
 data = ticker.history(period="1mo", interval=timeframe)
 
 if not data.empty and len(data) > 30:
-    # --- 3. INDICATORS & ORDER FLOW ENGINE ---
+    # --- 3. INDICATORS ENGINE ---
     data['RSI'] = ta.rsi(data['Close'], length=14)
-    
-    # Simple Order Flow (Price Change * Volume)
     data['Delta'] = (data['Close'] - data['Open']) * data['Volume']
     cum_delta = data['Delta'].tail(10).sum()
     
     # --- 4. STRENGTH SCORING LOGIC ---
     score = 5 
     
-    # RSI Logic
+    # RSI Scoring
     if pd.notna(data['RSI'].iloc[-1]):
         rsi_val = data['RSI'].iloc[-1]
         if rsi_val < 30: score += 2 
         elif rsi_val > 70: score -= 2 
 
-    # Order Flow Logic (Cumulative Delta)
-    if cum_delta > 0: 
-        score += 2  # Strong Buying Pressure
-    elif cum_delta < 0:
-        score -= 2  # Strong Selling Pressure
+    # Order Flow (Delta) Scoring
+    if cum_delta > 0: score += 2
+    elif cum_delta < 0: score -= 2
 
-    # --- 5. DASHBOARD ---
+    # --- 5. DASHBOARD LAYOUT ---
     col1, col2 = st.columns([1, 1])
     
     with col1:
         st.subheader("🔥 Foreteller Entry Strength")
+        
+        # Display Final Score
         if score >= 8:
-            st.success(f"### SCORE: {score} / 10")
-            st.warning("🚨 ALERT: SMART MONEY BUYING DETECTED")
+            st.success(f"### SCORE: {score} / 10 - STRONG BUY")
+            st.toast("BUY SETUP DETECTED")
         elif score <= 2:
-            st.error(f"### SCORE: {score} / 10")
-            st.warning("🚨 ALERT: SMART MONEY SELLING DETECTED")
+            st.error(f"### SCORE: {score} / 10 - STRONG SELL")
+            st.toast("SELL SETUP DETECTED")
         else:
-            st.info(f"### SCORE: {score} / 10")
+            st.info(f"### SCORE: {score} / 10 - NEUTRAL")
         
         st.progress(score / 10)
-        
-    with col2:
-        st.subheader("🌊 Order Flow Heatmap (Last 10 Bars)")
-        delta_color = "green" if cum_delta > 0 else "red"
-        st.markdown(f"""
-            <div style="background-color:{delta_color}; padding:15px; border-radius:10px; text-align:center; color:white;">
-                <b>Cumulative Delta: {cum_delta:,.0f}</b><br>
-                {'Bullish Pressure' if cum_delta > 0 else 'Bearish Pressure'}
-            </div>
-        """, unsafe_allow_with_html=True)
 
-    # --- 6. VOLUME PROFILE CHART ---
+    with col2:
+        st.subheader("📅 High-Impact Economic Events")
+        # Simplified News Feed for Fundamentals
+        news = ticker.news
+        if news:
+            for item in news[:3]:
+                st.write(f"• **{item.get('title')}**")
+        else:
+            st.write("No major USD/EUR volatility events currently detected.")
+
+    # --- 6. ADVANCED VOLUME PROFILE ---
     st.divider()
-    st.subheader("📊 Volume Profile & Price Action")
-    st.bar_chart(data['Volume'].tail(20))
+    st.subheader("📊 Recent Order Flow (Volume Delta)")
+    st.area_chart(data['Delta'].tail(30))
+    st.caption("Green spikes indicate strong buyer control; Red spikes indicate seller control.")
 
 else:
-    st.info("🔄 Connecting to live exchange rates...")
+    st.info("🔄 Connecting to live exchange rates... check your internet in Entebbe.")
