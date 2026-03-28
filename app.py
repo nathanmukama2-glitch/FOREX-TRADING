@@ -2,11 +2,12 @@ import streamlit as st
 import yfinance as yf
 import pandas_ta as ta
 import pandas as pd
+import numpy as np
 
 st.set_page_config(page_title="Forex Foreteller Pro", layout="wide")
 st.title("🦅 Forex Trading Foreteller Pro")
 
-# --- 1. SIDEBAR: SETTINGS & RISK CALCULATOR ---
+# --- 1. SIDEBAR: SETTINGS ---
 with st.sidebar:
     st.header("⚙️ Trading Settings")
     symbol = st.text_input("Pair (e.g., EURUSD=X)", "EURUSD=X")
@@ -28,56 +29,58 @@ ticker = yf.Ticker(symbol)
 data = ticker.history(period="1mo", interval=timeframe)
 
 if not data.empty and len(data) > 30:
-    # --- 3. INDICATORS ENGINE ---
+    # --- 3. INDICATORS & ORDER FLOW ENGINE ---
     data['RSI'] = ta.rsi(data['Close'], length=14)
-    adx = ta.adx(data['High'], data['Low'], data['Close'], length=14)
-    data = pd.concat([data, adx], axis=1)
+    
+    # Simple Order Flow (Price Change * Volume)
+    data['Delta'] = (data['Close'] - data['Open']) * data['Volume']
+    cum_delta = data['Delta'].tail(10).sum()
     
     # --- 4. STRENGTH SCORING LOGIC ---
     score = 5 
     
-    # RSI Scoring
+    # RSI Logic
     if pd.notna(data['RSI'].iloc[-1]):
         rsi_val = data['RSI'].iloc[-1]
         if rsi_val < 30: score += 2 
         elif rsi_val > 70: score -= 2 
 
-    # Trend Strength (ADX) - Don't trade if ADX < 20 (Weak Trend)
-    last_adx = data['ADX_14'].iloc[-1]
-    if last_adx < 20:
-        score = 5 # Force neutral if there is no trend
-    
-    # --- 5. DASHBOARD & ALERTS ---
+    # Order Flow Logic (Cumulative Delta)
+    if cum_delta > 0: 
+        score += 2  # Strong Buying Pressure
+    elif cum_delta < 0:
+        score -= 2  # Strong Selling Pressure
+
+    # --- 5. DASHBOARD ---
     col1, col2 = st.columns([1, 1])
     
     with col1:
-        st.subheader("🔥 Entry Strength Score")
-        
+        st.subheader("🔥 Foreteller Entry Strength")
         if score >= 8:
             st.success(f"### SCORE: {score} / 10")
-            st.balloons() # Visual celebration for high strength
-            st.warning("🚨 ALERT: HIGH PROBABILITY BUY SIGNAL DETECTED")
+            st.warning("🚨 ALERT: SMART MONEY BUYING DETECTED")
         elif score <= 2:
             st.error(f"### SCORE: {score} / 10")
-            st.warning("🚨 ALERT: HIGH PROBABILITY SELL SIGNAL DETECTED")
+            st.warning("🚨 ALERT: SMART MONEY SELLING DETECTED")
         else:
             st.info(f"### SCORE: {score} / 10")
-            
+        
         st.progress(score / 10)
-        st.write(f"**Trend Strength (ADX):** {last_adx:.2f} ({'Strong' if last_adx > 25 else 'Weak'})")
-
+        
     with col2:
-        st.subheader("📰 Macro News")
-        news = ticker.news
-        if news:
-            for item in news[:3]:
-                st.write(f"• **{item.get('title')}** [Read]({item.get('link')})")
+        st.subheader("🌊 Order Flow Heatmap (Last 10 Bars)")
+        delta_color = "green" if cum_delta > 0 else "red"
+        st.markdown(f"""
+            <div style="background-color:{delta_color}; padding:15px; border-radius:10px; text-align:center; color:white;">
+                <b>Cumulative Delta: {cum_delta:,.0f}</b><br>
+                {'Bullish Pressure' if cum_delta > 0 else 'Bearish Pressure'}
+            </div>
+        """, unsafe_allow_with_html=True)
 
-    # --- 6. ADVANCED HISTORY ---
+    # --- 6. VOLUME PROFILE CHART ---
     st.divider()
-    st.subheader("📝 Live Foreteller Log")
-    # Show last 5 periods with indicators
-    st.dataframe(data[['Close', 'RSI', 'ADX_14']].tail(5))
+    st.subheader("📊 Volume Profile & Price Action")
+    st.bar_chart(data['Volume'].tail(20))
 
 else:
     st.info("🔄 Connecting to live exchange rates...")
