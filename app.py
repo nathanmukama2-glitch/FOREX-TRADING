@@ -113,15 +113,32 @@ if not data.empty and len(data) > 30:
         st.progress(min(max((price - curr_lower) / (curr_upper - curr_lower), 0.0), 1.0))
         st.write(f"**Lower:** {curr_lower:.5f}")
 
-    with tab_calendar:
-        st.subheader("⚠️ High-Impact News")
+   with tab_calendar:
+        st.subheader("⚠️ High-Impact News (EAT)")
         try:
+            # Using the reliable weekly calendar feed
             feed = feedparser.parse("https://nfs.faireconomy.media/ff_calendar_thisweek.xml")
-            for entry in feed.entries[:5]:
-                impact = "🔴" if "High" in getattr(entry, 'impact', '') else "🟡"
-                st.write(f"{impact} **{entry.title}** ({entry.country})")
-        except:
-            st.error("Feed error.")
+            
+            if feed.entries:
+                found_news = False
+                for entry in feed.entries:
+                    # IMPROVED: Check for 'High' impact regardless of capital letters
+                    impact_level = getattr(entry, 'impact', '').strip().lower()
+                    
+                    if impact_level == "high":
+                        st.error(f"🔴 **HIGH IMPACT:** {entry.title} ({entry.country})")
+                        st.caption(f"Time: {entry.date} at {entry.time}")
+                        found_news = True
+                    elif impact_level == "medium":
+                        st.warning(f"🟡 **Medium Impact:** {entry.title} ({entry.country})")
+                        found_news = True
+                
+                if not found_news:
+                    st.info("No High or Medium impact news for the rest of this week.")
+            else:
+                st.info("The news feed is currently empty. Check back during the London session.")
+        except Exception as e:
+            st.error("News Feed Connection Error. Please refresh.")
 
     # --- 6. HISTORY ---
     st.divider()
