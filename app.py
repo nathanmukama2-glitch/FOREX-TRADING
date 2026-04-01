@@ -2,7 +2,7 @@ import streamlit as st
 import yfinance as yf
 import pandas_ta as ta
 import pandas as pd
-import feedparser # Add 'feedparser' to your requirements.txt
+import feedparser 
 
 st.set_page_config(page_title="Forex Foreteller Pro", layout="wide")
 st.title("🦅 Forex Trading Foreteller Pro")
@@ -34,6 +34,13 @@ if not data.empty and len(data) > 30:
     adx = ta.adx(data['High'], data['Low'], data['Close'], length=14)
     data = pd.concat([data, adx], axis=1)
     
+    # --- LIQUIDITY CALCULATION ---
+    # RVOL (Relative Volume): Current Volume vs 20-period Average
+    data['Avg_Vol'] = data['Volume'].rolling(window=20).mean()
+    current_vol = data['Volume'].iloc[-1]
+    avg_vol = data['Avg_Vol'].iloc[-1]
+    rvol = current_vol / avg_vol if avg_vol > 0 else 1
+    
     # --- 4. SCORING LOGIC ---
     score = 5 
     rsi_val = data['RSI'].iloc[-1]
@@ -45,7 +52,7 @@ if not data.empty and len(data) > 30:
         score = 5 # Safety reset for weak trends
 
     # --- 5. DASHBOARD TABS ---
-    tab_signal, tab_calendar = st.tabs(["🎯 Live Signal", "📅 Macro Events"])
+    tab_signal, tab_liq, tab_calendar = st.tabs(["🎯 Live Signal", "💧 Liquidity", "📅 Macro Events"])
 
     with tab_signal:
         col1, col2 = st.columns([1, 1])
@@ -60,27 +67,41 @@ if not data.empty and len(data) > 30:
             st.write(f"**RSI Momentum:** {rsi_val:.2f}")
             st.write(f"**Trend (ADX):** {last_adx:.2f}")
 
+    with tab_liq:
+        st.subheader("💧 Market Liquidity Analysis")
+        l_col1, l_col2 = st.columns(2)
+        
+        with l_col1:
+            st.metric("Relative Volume (RVOL)", f"{rvol:.2f}x")
+            if rvol > 1.5:
+                st.success("HIGH LIQUIDITY: Orders will fill fast.")
+            elif rvol > 0.8:
+                st.warning("NORMAL LIQUIDITY: Standard conditions.")
+            else:
+                st.error("LOW LIQUIDITY: Beware of slippage!")
+        
+        with l_col2:
+            st.write("**Why Liquidity Matters:**")
+            st.caption("High RVOL means 'Smart Money' is active. Low RVOL means the market is quiet and price movements might be fake.")
+
     with tab_calendar:
-        st.subheader("⚠️ High-Impact News (USD/EUR/GBP)")
+        st.subheader("⚠️ High-Impact News")
         try:
-            # Fetching live events from a reliable calendar feed
             calendar_url = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
             feed = feedparser.parse(calendar_url)
-            
             if feed.entries:
                 for entry in feed.entries[:8]:
-                    # Highlights events likely to cause high volatility
                     impact_color = "🔴" if "High" in getattr(entry, 'impact', '') else "🟡"
-                    st.write(f"{impact_color} **{entry.title}** | {entry.country} | {entry.date} {entry.time}")
+                    st.write(f"{impact_color} **{entry.title}** | {entry.country} | {entry.date}")
             else:
-                st.write("No major news events found for the next 24 hours.")
+                st.write("No major news events found.")
         except:
-            st.error("Economic feed temporarily unavailable. Check manual calendar.")
+            st.error("Economic feed unavailable.")
 
     # --- 6. HISTORY ---
     st.divider()
     st.subheader("📝 Live Market Log")
-    st.dataframe(data[['Close', 'RSI', 'ADX_14']].tail(10))
+    st.dataframe(data[['Close', 'RSI', 'ADX_14', 'Volume']].tail(10))
 
 else:
     st.info("🔄 Refreshing live exchange data... check your connection in Entebbe.")
