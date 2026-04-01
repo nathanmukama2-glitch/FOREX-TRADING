@@ -53,6 +53,7 @@ if not data.empty and len(data) > 30:
     bbands = ta.bbands(data['Close'], length=20, std=2)
     data = pd.concat([data, adx_df, bbands], axis=1)
     
+    # Identify Bollinger columns dynamically to prevent KeyErrors
     upper_col = [c for c in data.columns if 'BBU' in c][0]
     lower_col = [c for c in data.columns if 'BBL' in c][0]
     
@@ -69,10 +70,8 @@ if not data.empty and len(data) > 30:
 
     if rsi_val < 35: score += 2 
     elif rsi_val > 65: score -= 2 
-
     if price <= curr_lower: score += 2 
     elif price >= curr_upper: score -= 2 
-
     if data['ADX_14'].iloc[-1] < 15: score = 5 
 
     # --- 5. DASHBOARD TABS ---
@@ -89,17 +88,12 @@ if not data.empty and len(data) > 30:
             
         with col2:
             st.subheader("💧 Liquidity Status")
-            # --- NEW COLOR-CODED LIQUIDITY LIGHT ---
             if rvol > 1.2:
                 st.write(f"### 🟢 HIGH ({rvol:.2f}x)")
-                st.caption("Market is deep. Orders will fill perfectly.")
             elif rvol > 0.8:
                 st.write(f"### 🟡 NORMAL ({rvol:.2f}x)")
-                st.caption("Standard trading conditions.")
             else:
                 st.write(f"### 🔴 LOW ({rvol:.2f}x)")
-                st.caption("Thin market. High risk of slippage!")
-            
             st.write(f"**RSI:** {rsi_val:.2f} | **ADX:** {data['ADX_14'].iloc[-1]:.2f}")
 
     with tab_vol:
@@ -107,43 +101,31 @@ if not data.empty and len(data) > 30:
         if price >= curr_upper: st.warning("Price at TOP BAND")
         elif price <= curr_lower: st.success("Price at BOTTOM BAND")
         else: st.info("Price in Middle Range")
-        
-        # Adding a visual range bar for Bollinger Bands
-        st.write(f"**Upper:** {curr_upper:.5f}")
-        st.progress(min(max((price - curr_lower) / (curr_upper - curr_lower), 0.0), 1.0))
-        st.write(f"**Lower:** {curr_lower:.5f}")
+        st.write(f"**Upper:** {curr_upper:.5f} | **Lower:** {curr_lower:.5f}")
 
-   with tab_calendar:
-        st.subheader("⚠️ High-Impact News (EAT)")
+    with tab_calendar:
+        st.subheader("⚠️ High-Impact News (This Week)")
         try:
-            # Using the reliable weekly calendar feed
             feed = feedparser.parse("https://nfs.faireconomy.media/ff_calendar_thisweek.xml")
-            
+            news_found = False
             if feed.entries:
-                found_news = False
                 for entry in feed.entries:
-                    # IMPROVED: Check for 'High' impact regardless of capital letters
-                    impact_level = getattr(entry, 'impact', '').strip().lower()
-                    
-                    if impact_level == "high":
-                        st.error(f"🔴 **HIGH IMPACT:** {entry.title} ({entry.country})")
-                        st.caption(f"Time: {entry.date} at {entry.time}")
-                        found_news = True
-                    elif impact_level == "medium":
-                        st.warning(f"🟡 **Medium Impact:** {entry.title} ({entry.country})")
-                        found_news = True
-                
-                if not found_news:
-                    st.info("No High or Medium impact news for the rest of this week.")
+                    impact = getattr(entry, 'impact', '').strip().lower()
+                    if impact == "high":
+                        st.error(f"🔴 **HIGH:** {entry.title} ({entry.country})")
+                        st.caption(f"Scheduled: {entry.date} {entry.time}")
+                        news_found = True
+                    elif impact == "medium":
+                        st.warning(f"🟡 **Medium:** {entry.title} ({entry.country})")
+                        news_found = True
+                if not news_found:
+                    st.info("No major news events found for the rest of the week.")
             else:
-                st.info("The news feed is currently empty. Check back during the London session.")
-        except Exception as e:
-            st.error("News Feed Connection Error. Please refresh.")
+                st.info("Economic calendar is currently quiet.")
+        except:
+            st.error("Could not reach the news server.")
 
     # --- 6. HISTORY ---
     st.divider()
     st.subheader("📝 Live Market Log")
     st.dataframe(data[['Close', 'RSI', 'ADX_14', upper_col, lower_col]].tail(10))
-
-else:
-    st.info("🔄 Connecting to market data...")
