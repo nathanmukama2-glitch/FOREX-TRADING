@@ -15,6 +15,10 @@ with st.sidebar:
     symbol = st.text_input("Pair (e.g., EURUSD=X)", "EURUSD=X")
     timeframe = st.selectbox("Timeframe", ["15m", "30m", "1h", "4h", "1d"], index=0)
     
+    # NEW: Force Refresh Button
+    if st.button("🔄 Force Data Refresh"):
+        st.rerun()
+
     st.divider()
     st.header("🕒 Market Sessions (EAT)")
     eat = pytz.timezone('Africa/Kampala')
@@ -45,14 +49,16 @@ data = ticker.history(period="1mo", interval=timeframe)
 
 if not data.empty and len(data) > 30:
     # --- 3. INDICATORS ENGINE ---
-    # RSI & ADX
     data['RSI'] = ta.rsi(data['Close'], length=14)
     adx_df = ta.adx(data['High'], data['Low'], data['Close'], length=14)
     
-    # Bollinger Bands (Volatility)
+    # Bollinger Bands with a fix for the naming error
     bbands = ta.bbands(data['Close'], length=20, std=2)
-    
     data = pd.concat([data, adx_df, bbands], axis=1)
+    
+    # Identify Bollinger columns dynamically to prevent KeyError
+    upper_col = [c for c in data.columns if 'BBU' in c][0]
+    lower_col = [c for c in data.columns if 'BBL' in c][0]
     
     # RVOL (Liquidity)
     data['Avg_Vol'] = data['Volume'].rolling(window=20).mean()
@@ -62,18 +68,18 @@ if not data.empty and len(data) > 30:
     score = 5 
     rsi_val = data['RSI'].iloc[-1]
     price = data['Close'].iloc[-1]
-    upper_bb = data['BBU_20_2.0'].iloc[-1]
-    lower_bb = data['BBL_20_2.0'].iloc[-1]
+    upper_bb = data['BBU_20_2.0'] if 'BBU_20_2.0' in data.columns else data[upper_col]
+    lower_bb = data['BBL_20_2.0'] if 'BBL_20_2.0' in data.columns else data[lower_col]
 
     # RSI Logic
     if rsi_val < 35: score += 2 
     elif rsi_val > 65: score -= 2 
 
-    # Bollinger Band Logic (Side-ways entries)
-    if price <= lower_bb: score += 2 # Price is cheap/oversold
-    elif price >= upper_bb: score -= 2 # Price is expensive/overbought
+    # Bollinger Band Logic (using the dynamic columns)
+    if price <= lower_bb.iloc[-1]: score += 2 
+    elif price >= upper_bb.iloc[-1]: score -= 2 
 
-    # Trend Filter (Lowered to 15 for more signals)
+    # Trend Filter (Stay at 15 for better sensitivity)
     last_adx = data['ADX_14'].iloc[-1]
     if last_adx < 15:
         score = 5 
@@ -97,13 +103,16 @@ if not data.empty and len(data) > 30:
 
     with tab_vol:
         st.subheader("📦 Bollinger Band Status")
-        if price >= upper_bb: st.warning("Price hitting TOP BAND - Prepare to Sell")
-        elif price <= lower_bb: st.success("Price hitting BOTTOM BAND - Prepare to Buy")
-        else: st.info("Price is in the middle of the range.")
+        curr_upper = upper_bb.iloc[-1]
+        curr_lower = lower_bb.iloc[-1]
         
-        st.write(f"**Upper Band:** {upper_bb:.5f}")
+        if price >= curr_upper: st.warning("Price at TOP BAND")
+        elif price <= curr_lower: st.success("Price at BOTTOM BAND")
+        else: st.info("Price in Middle Range")
+        
+        st.write(f"**Upper Band:** {curr_upper:.5f}")
         st.write(f"**Current Price:** {price:.5f}")
-        st.write(f"**Lower Band:** {lower_bb:.5f}")
+        st.write(f"**Lower Band:** {curr_lower:.5f}")
 
     with tab_calendar:
         st.subheader("⚠️ High-Impact News")
@@ -118,7 +127,7 @@ if not data.empty and len(data) > 30:
     # --- 6. HISTORY ---
     st.divider()
     st.subheader("📝 Live Market Log")
-    st.dataframe(data[['Close', 'RSI', 'ADX_14', 'BBL_20_2.0', 'BBU_20_2.0']].tail(10))
+    st.dataframe(data[['Close', 'RSI', 'ADX_14', upper_col, lower_col]].tail(10))
 
 else:
     st.info("🔄 Connecting to market data...")
