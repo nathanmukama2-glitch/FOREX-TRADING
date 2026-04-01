@@ -15,7 +15,6 @@ with st.sidebar:
     symbol = st.text_input("Pair (e.g., EURUSD=X)", "EURUSD=X")
     timeframe = st.selectbox("Timeframe", ["15m", "30m", "1h", "4h", "1d"], index=0)
     
-    # NEW: Force Refresh Button
     if st.button("🔄 Force Data Refresh"):
         st.rerun()
 
@@ -51,12 +50,9 @@ if not data.empty and len(data) > 30:
     # --- 3. INDICATORS ENGINE ---
     data['RSI'] = ta.rsi(data['Close'], length=14)
     adx_df = ta.adx(data['High'], data['Low'], data['Close'], length=14)
-    
-    # Bollinger Bands with a fix for the naming error
     bbands = ta.bbands(data['Close'], length=20, std=2)
     data = pd.concat([data, adx_df, bbands], axis=1)
     
-    # Identify Bollinger columns dynamically to prevent KeyError
     upper_col = [c for c in data.columns if 'BBU' in c][0]
     lower_col = [c for c in data.columns if 'BBL' in c][0]
     
@@ -68,51 +64,54 @@ if not data.empty and len(data) > 30:
     score = 5 
     rsi_val = data['RSI'].iloc[-1]
     price = data['Close'].iloc[-1]
-    upper_bb = data['BBU_20_2.0'] if 'BBU_20_2.0' in data.columns else data[upper_col]
-    lower_bb = data['BBL_20_2.0'] if 'BBL_20_2.0' in data.columns else data[lower_col]
+    curr_upper = data[upper_col].iloc[-1]
+    curr_lower = data[lower_col].iloc[-1]
 
-    # RSI Logic
     if rsi_val < 35: score += 2 
     elif rsi_val > 65: score -= 2 
 
-    # Bollinger Band Logic (using the dynamic columns)
-    if price <= lower_bb.iloc[-1]: score += 2 
-    elif price >= upper_bb.iloc[-1]: score -= 2 
+    if price <= curr_lower: score += 2 
+    elif price >= curr_upper: score -= 2 
 
-    # Trend Filter (Stay at 15 for better sensitivity)
-    last_adx = data['ADX_14'].iloc[-1]
-    if last_adx < 15:
-        score = 5 
+    if data['ADX_14'].iloc[-1] < 15: score = 5 
 
     # --- 5. DASHBOARD TABS ---
     tab_signal, tab_vol, tab_calendar = st.tabs(["🎯 Live Signal", "📊 Volatility", "📅 Macro Events"])
 
     with tab_signal:
-        col1, col2 = st.columns([1, 1])
+        col1, col2 = st.columns(2)
         with col1:
             st.subheader("🔥 Entry Strength Score")
             if score >= 7: st.success(f"### SCORE: {score} / 10 - BUY")
             elif score <= 3: st.error(f"### SCORE: {score} / 10 - SELL")
             else: st.info(f"### SCORE: {score} / 10 - WAIT")
             st.progress(score / 10)
+            
         with col2:
-            st.subheader("Technical Diagnostics")
-            st.write(f"**RSI:** {rsi_val:.2f}")
-            st.write(f"**Trend (ADX):** {last_adx:.2f}")
-            st.write(f"**Liquidity (RVOL):** {rvol:.2f}x")
+            st.subheader("💧 Liquidity Status")
+            # --- NEW COLOR-CODED LIQUIDITY LIGHT ---
+            if rvol > 1.2:
+                st.write(f"### 🟢 HIGH ({rvol:.2f}x)")
+                st.caption("Market is deep. Orders will fill perfectly.")
+            elif rvol > 0.8:
+                st.write(f"### 🟡 NORMAL ({rvol:.2f}x)")
+                st.caption("Standard trading conditions.")
+            else:
+                st.write(f"### 🔴 LOW ({rvol:.2f}x)")
+                st.caption("Thin market. High risk of slippage!")
+            
+            st.write(f"**RSI:** {rsi_val:.2f} | **ADX:** {data['ADX_14'].iloc[-1]:.2f}")
 
     with tab_vol:
         st.subheader("📦 Bollinger Band Status")
-        curr_upper = upper_bb.iloc[-1]
-        curr_lower = lower_bb.iloc[-1]
-        
         if price >= curr_upper: st.warning("Price at TOP BAND")
         elif price <= curr_lower: st.success("Price at BOTTOM BAND")
         else: st.info("Price in Middle Range")
         
-        st.write(f"**Upper Band:** {curr_upper:.5f}")
-        st.write(f"**Current Price:** {price:.5f}")
-        st.write(f"**Lower Band:** {curr_lower:.5f}")
+        # Adding a visual range bar for Bollinger Bands
+        st.write(f"**Upper:** {curr_upper:.5f}")
+        st.progress(min(max((price - curr_lower) / (curr_upper - curr_lower), 0.0), 1.0))
+        st.write(f"**Lower:** {curr_lower:.5f}")
 
     with tab_calendar:
         st.subheader("⚠️ High-Impact News")
